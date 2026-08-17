@@ -1,0 +1,31 @@
+# Build directories
+build/
+bin/
+out/
+cmake-build-*/
+
+# Pico / UF2 artifacts (keep binaries out of git)
+*.uf2
+*.elf
+*.hex
+*.bin
+*.map
+*.dis
+
+# Pico SDK generated
+generated/
+pico-sdk/
+_deps/
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class

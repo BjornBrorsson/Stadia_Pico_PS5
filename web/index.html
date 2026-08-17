@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stadia to PS5 / Wingman P5 - Test & Remap Studio</title>
+  <meta name="description" content="Real-time test suite, latency monitor, rumble diagnostic, and button remapping tool for Google Stadia Controller connected to PS5 / Brook Wingman P5 via Raspberry Pi Pico WH.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="logo-badge">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path>
+            <path d="M2 12h20"></path>
+          </svg>
+        </div>
+        <div>
+          <h1>Stadia <span class="accent-text">Pico</span> PS5</h1>
+          <p class="subtitle">Wireless BLE Bridge & Brook Wingman P5 Diagnostic Studio</p>
+        </div>
+      </div>
+      <div class="connection-status-pill" id="globalStatusPill">
+        <span class="status-dot disconnected" id="statusDot"></span>
+        <span class="status-text" id="statusText">Waiting for Controller...</span>
+      </div>
+    </header>
+
+    <!-- Main Grid -->
+    <main class="dashboard-grid">
+      <!-- Left Column: Controller Visualizer -->
+      <section class="card visualizer-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h2>Live Controller Visualizer</h2>
+            <span class="badge" id="detectedProfileBadge">No Device</span>
+          </div>
+          <div class="card-controls">
+            <button class="btn btn-secondary btn-sm" id="btnIdentify">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+              Flash LED
+            </button>
+          </div>
+        </div>
+
+        <div class="visualizer-wrapper">
+          <!-- Interactive Controller SVG -->
+          <svg id="controllerSvg" viewBox="0 0 800 500" class="controller-svg">
+            <!-- Controller Body -->
+            <path class="ctrl-body" d="M220,100 C320,80 480,80 580,100 C680,120 740,240 720,380 C705,480 620,490 560,430 C510,380 470,360 400,360 C330,360 290,380 240,430 C180,490 95,480 80,380 C60,240 120,120 220,100 Z" />
+            
+            <!-- Grips / Accents -->
+            <path class="ctrl-grip" d="M120,240 C140,320 170,410 240,430 C200,450 110,430 85,360 C75,310 95,260 120,240 Z" />
+            <path class="ctrl-grip" d="M680,240 C660,320 630,410 560,430 C600,450 690,430 715,360 C725,310 705,260 680,240 Z" />
+
+            <!-- Bumpers & Triggers (Top) -->
+            <!-- L2 / LT Trigger -->
+            <rect id="btn-l2" class="ctrl-btn ctrl-trigger" x="180" y="30" width="90" height="40" rx="8" />
+            <text x="225" y="55" class="ctrl-label">L2 / LT</text>
+            
+            <!-- R2 / RT Trigger -->
+            <rect id="btn-r2" class="ctrl-btn ctrl-trigger" x="530" y="30" width="90" height="40" rx="8" />
+            <text x="575" y="55" class="ctrl-label">R2 / RT</text>
+
+            <!-- L1 / LB Bumper -->
+            <rect id="btn-l1" class="ctrl-btn ctrl-bumper" x="190" y="80" width="80" height="24" rx="6" />
+            <text x="230" y="96" class="ctrl-label">L1 / LB</text>
+
+            <!-- R1 / RB Bumper -->
+            <rect id="btn-r1" class="ctrl-btn ctrl-bumper" x="530" y="80" width="80" height="24" rx="6" />
+            <text x="570" y="96" class="ctrl-label">R1 / RB</text>
+
+            <!-- Center Touchpad / Center Area -->
+            <rect id="btn-touchpad" class="ctrl-btn ctrl-touchpad" x="320" y="110" width="160" height="85" rx="12" />
+            <text x="400" y="145" class="ctrl-label">Touchpad / Assist</text>
+
+            <!-- System Buttons -->
+            <!-- Stadia Home / PS Button -->
+            <circle id="btn-home" class="ctrl-btn ctrl-round" cx="400" cy="240" r="24" />
+            <path d="M392 245 L400 233 L408 245 Z" fill="#ffffff" opacity="0.8" />
+            
+            <!-- Options (Dots) / Share / Create -->
+            <circle id="btn-select" class="ctrl-btn ctrl-small" cx="330" cy="210" r="14" />
+            <text x="330" y="214" class="ctrl-label-sm">•••</text>
+
+            <!-- Menu (Hamburger) / Start / Options -->
+            <circle id="btn-start" class="ctrl-btn ctrl-small" cx="470" cy="210" r="14" />
+            <text x="470" y="214" class="ctrl-label-sm">☰</text>
+
+            <!-- Assistant Button (●) -->
+            <circle id="btn-assist" class="ctrl-btn ctrl-small" cx="350" cy="265" r="12" />
+            <text x="350" y="269" class="ctrl-label-sm">●</text>
+
+            <!-- Capture Button ([ ]) -->
+            <circle id="btn-capture" class="ctrl-btn ctrl-small" cx="450" cy="265" r="12" />
+            <text x="450" y="269" class="ctrl-label-sm">⛶</text>
+
+            <!-- D-Pad (Left Side) -->
+            <g id="dpad-group" transform="translate(180, 160)">
+              <path class="ctrl-dpad-base" d="M35,0 L55,0 L55,35 L90,35 L90,55 L55,55 L55,90 L35,90 L35,55 L0,55 L0,35 L35,35 Z" />
+              <!-- D-pad Up -->
+              <rect id="btn-dpad-up" class="ctrl-btn ctrl-dpad-btn" x="35" y="0" width="20" height="35" rx="3" />
+              <!-- D-pad Right -->
+              <rect id="btn-dpad-right" class="ctrl-btn ctrl-dpad-btn" x="55" y="35" width="35" height="20" rx="3" />
+              <!-- D-pad Down -->
+              <rect id="btn-dpad-down" class="ctrl-btn ctrl-dpad-btn" x="35" y="55" width="20" height="35" rx="3" />
+              <!-- D-pad Left -->
+              <rect id="btn-dpad-left" class="ctrl-btn ctrl-dpad-btn" x="0" y="35" width="35" height="20" rx="3" />
+            </g>
+
+            <!-- Face Buttons (Right Side: A, B, X, Y / ✕, ◯, ▢, △) -->
+            <g id="face-buttons" transform="translate(580, 205)">
+              <!-- Y / Triangle (Top) -->
+              <circle id="btn-y" class="ctrl-btn ctrl-face" cx="0" cy="-45" r="18" />
+              <text x="0" y="-40" class="ctrl-btn-text btn-y-color">Y / △</text>
+
+              <!-- B / Circle (Right) -->
+              <circle id="btn-b" class="ctrl-btn ctrl-face" cx="45" cy="0" r="18" />
+              <text x="45" y="5" class="ctrl-btn-text btn-b-color">B / ◯</text>
+
+              <!-- A / Cross (Bottom) -->
+              <circle id="btn-a" class="ctrl-btn ctrl-face" cx="0" cy="45" r="18" />
+              <text x="0" y="50" class="ctrl-btn-text btn-a-color">A / ✕</text>
+
+              <!-- X / Square (Left) -->
+              <circle id="btn-x" class="ctrl-btn ctrl-face" cx="-45" cy="0" r="18" />
+              <text x="-45" y="5" class="ctrl-btn-text btn-x-color">X / ▢</text>
+            </g>
+
+            <!-- Analog Sticks (Bottom Center / Symmetrical Stadia layout) -->
+            <!-- Left Stick -->
+            <g id="stick-left-group" transform="translate(290, 310)">
+              <circle class="ctrl-stick-base" cx="0" cy="0" r="46" />
+              <circle id="stick-l-gate" class="ctrl-stick-gate" cx="0" cy="0" r="38" />
+              <line id="stick-l-line" x1="0" y1="0" x2="0" y2="0" class="ctrl-stick-line" />
+              <circle id="stick-l-cap" class="ctrl-btn ctrl-stick-cap" cx="0" cy="0" r="32" />
+              <text x="0" y="5" class="ctrl-stick-text">L3</text>
+            </g>
+
+            <!-- Right Stick -->
+            <g id="stick-right-group" transform="translate(510, 310)">
+              <circle class="ctrl-stick-base" cx="0" cy="0" r="46" />
+              <circle id="stick-r-gate" class="ctrl-stick-gate" cx="0" cy="0" r="38" />
+              <line id="stick-r-line" x1="0" y1="0" x2="0" y2="0" class="ctrl-stick-line" />
+              <circle id="stick-r-cap" class="ctrl-btn ctrl-stick-cap" cx="0" cy="0" r="32" />
+              <text x="0" y="5" class="ctrl-stick-text">R3</text>
+            </g>
+          </svg>
+
+          <!-- Analog Gauges Overlay -->
+          <div class="analog-gauges">
+            <div class="gauge-box">
+              <span class="gauge-label">Left Trigger (L2)</span>
+              <div class="progress-bar-bg"><div class="progress-bar-fill" id="gaugeL2"></div></div>
+              <span class="gauge-value" id="valL2">0%</span>
+            </div>
+            <div class="gauge-box">
+              <span class="gauge-label">Right Trigger (R2)</span>
+              <div class="progress-bar-bg"><div class="progress-bar-fill" id="gaugeR2"></div></div>
+              <span class="gauge-value" id="valR2">0%</span>
+            </div>
+            <div class="gauge-box">
+              <span class="gauge-label">Left Stick Coordinates</span>
+              <div class="coord-display">X: <span id="valLX">0.00</span> | Y: <span id="valLY">0.00</span></div>
+            </div>
+            <div class="gauge-box">
+              <span class="gauge-label">Right Stick Coordinates</span>
+              <div class="coord-display">X: <span id="valRX">0.00</span> | Y: <span id="valRY">0.00</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Diagnostics, Remapper, and Rumble Test -->
+      <div class="sidebar-column">
+        <!-- Telemetry & Performance -->
+        <section class="card">
+          <div class="card-header">
+            <h2>Bridge Telemetry</h2>
+            <span class="badge badge-success" id="rateBadge">0 Hz</span>
+          </div>
+          <div class="stats-grid">
+            <div class="stat-card">
+              <span class="stat-title">Input Polling</span>
+              <span class="stat-value" id="pollingRateVal">-- Hz</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-title">Frame Delta</span>
+              <span class="stat-value" id="latencyVal">-- ms</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-title">Report Type</span>
+              <span class="stat-value" id="reportTypeVal">Standard</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-title">Buttons Active</span>
+              <span class="stat-value" id="activeBtnsCount">0</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Haptic Feedback / Rumble Test -->
+        <section class="card">
+          <div class="card-header">
+            <h2>Haptic Rumble Test</h2>
+          </div>
+          <p class="section-desc">Test Stadia dual haptic vibration motors via host rumble pass-through.</p>
+          
+          <div class="rumble-controls">
+            <div class="slider-group">
+              <div class="slider-header">
+                <span>Heavy Motor (Low Freq)</span>
+                <span id="lowFreqVal">100%</span>
+              </div>
+              <input type="range" id="sliderLowFreq" min="0" max="100" value="100" class="range-slider">
+            </div>
+
+            <div class="slider-group">
+              <div class="slider-header">
+                <span>Light Motor (High Freq)</span>
+                <span id="highFreqVal">100%</span>
+              </div>
+              <input type="range" id="sliderHighFreq" min="0" max="100" value="100" class="range-slider">
+            </div>
+
+            <div class="btn-group">
+              <button class="btn btn-primary" id="btnRumblePulse">Pulse (500ms)</button>
+              <button class="btn btn-secondary" id="btnRumbleRamp">Ramp Test</button>
+              <button class="btn btn-danger" id="btnRumbleStop">Stop</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Button Remapper & Profile Manager -->
+        <section class="card">
+          <div class="card-header">
+            <h2>Button Remapper</h2>
+            <select id="presetSelect" class="select-dropdown">
+              <option value="default_ps5">Preset: Standard PS5 (Brook Wingman)</option>
+              <option value="swap_bumpers">Preset: Swap Triggers & Bumpers</option>
+              <option value="southpaw">Preset: Southpaw (Swap Sticks)</option>
+              <option value="arcade_fight">Preset: 6-Button Arcade Layout</option>
+              <option value="custom">Custom Configuration</option>
+            </select>
+          </div>
+
+          <div class="remap-table-wrapper">
+            <table class="remap-table">
+              <thead>
+                <tr>
+                  <th>Physical Stadia Input</th>
+                  <th>Remapped Output</th>
+                </tr>
+              </thead>
+              <tbody id="remapTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+
+          <div class="btn-group mt-3">
+            <button class="btn btn-secondary btn-sm" id="btnExportJson">Export JSON</button>
+            <button class="btn btn-secondary btn-sm" id="btnExportCHeader">Export C Header</button>
+            <label class="btn btn-secondary btn-sm file-upload-label">
+              Import JSON
+              <input type="file" id="fileImportJson" accept=".json" style="display:none;">
+            </label>
+            <button class="btn btn-primary btn-sm" id="btnResetDefaults">Reset Default</button>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- Footer Guide -->
+    <footer class="app-footer">
+      <div class="footer-tips">
+        <p><strong>💡 Quick Tip:</strong> Hold <code>Stadia</code> + <code>Y</code> on your Stadia Controller to put it in Bluetooth pairing mode. To unpair on the Pico WH, hold <code>Assistant (●)</code> + <code>Capture ([ ])</code> for 3 seconds.</p>
+      </div>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

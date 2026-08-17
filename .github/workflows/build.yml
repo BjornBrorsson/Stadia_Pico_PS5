@@ -1,0 +1,40 @@
+name: Build Firmware & Release
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install ARM GNU Toolchain and CMake
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi libnewlib-arm-none-eabi build-essential cmake
+
+      - name: Checkout Pico SDK
+        run: |
+          git clone --recurse-submodules https://github.com/raspberrypi/pico-sdk.git $HOME/pico-sdk
+          echo "PICO_SDK_PATH=$HOME/pico-sdk" >> $GITHUB_ENV
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -DPICO_BOARD=pico_w -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build Firmware
+        run: |
+          cmake --build build -j$(nproc)
+
+      - name: Upload UF2 Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stadia_ps5_bridge_firmware
+          path: build/stadia_ps5_bridge.uf2
