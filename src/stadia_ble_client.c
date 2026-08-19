@@ -4,16 +4,13 @@
 #include "pico/stdlib.h"
 #include "pico/cyw43_arch.h"
 #include "btstack.h"
+#include "ble/gatt-service/hids_host.h"
+#include "ble/le_device_db.h"
 #include <string.h>
 #include <stdio.h>
 
 // Standard BLE UUIDs
 #define ORG_BLUETOOTH_SERVICE_HUMAN_INTERFACE_DEVICE          0x1812
-#define ORG_BLUETOOTH_CHARACTERISTIC_REPORT                   0x2A4D
-#define ORG_BLUETOOTH_CHARACTERISTIC_REPORT_MAP               0x2A4B
-#define ORG_BLUETOOTH_CHARACTERISTIC_BOOT_KEYBOARD_INPUT_REPORT 0x2A22
-#define ORG_BLUETOOTH_DESCRIPTOR_REPORT_REFERENCE             0x2908
-#define ORG_BLUETOOTH_DESCRIPTOR_GATT_CLIENT_CHARACTERISTIC_CONFIGURATION 0x2902
 
 // Stadia Controller BLE Identifiers
 #define STADIA_BLE_NAME_PREFIX "Stadia"
@@ -27,15 +24,9 @@ static stadia_state_callback_t state_callback = NULL;
 static bd_addr_t stadia_addr;
 static bd_addr_type_t stadia_addr_type;
 static hci_con_handle_t connection_handle = HCI_CON_HANDLE_INVALID;
+static uint16_t hids_cid = 0;
 
-static gatt_client_service_t hid_service;
-static gatt_client_characteristic_t input_report_characteristic;
-static gatt_client_characteristic_t output_report_characteristic;
-static gatt_client_notification_t notification_listener;
-
-static bool found_input_report = false;
-static bool found_output_report = false;
-static bool hogp_subscribed = false;
+static uint8_t hid_descriptor_storage[600];
 
 static btstack_packet_callback_registration_t hci_event_callback_registration;
 static btstack_packet_callback_registration_t sm_event_callback_registration;
@@ -82,109 +73,48 @@ static bool advertisement_matches_stadia(const uint8_t *adv_data, uint8_t adv_le
 }
 
 //--------------------------------------------------------------------+
-// GATT Discovery & HOGP Handlers
+// HIDS Host Events
 //--------------------------------------------------------------------+
 
-static void handle_gatt_notification(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size) {
+static void handle_hids_client_event(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size) {
     (void) packet_type;
     (void) channel;
+    (void) size;
 
-    if (hci_event_packet_get_type(packet) != GATT_EVENT_NOTIFICATION) return;
+    if (hci_event_packet_get_type(packet) != HCI_EVENT_GATTSERVICE_META) return;
 
-    uint16_t value_length = gatt_event_notification_get_value_length(packet);
-    const uint8_t *value  = gatt_event_notification_get_value(packet);
-
-    if (value && value_length >= 10 && state_callback) {
-        gamepad_state_t current_state;
-        if (input_mapper_parse_stadia_report(value, value_length, &current_state)) {
-            state_callback(&current_state);
-        }
-    }
-}
-
-static void gatt_characteristic_discovery_callback(uint8_t packet_type, uint16_t channel, uint8_t *packet, void *arg) {
-    (void) packet_type;
-    (void) channel;
-    (void) arg;
-
-    uint8_t event = hci_event_packet_get_type(packet);
-
-    switch (event) {
-        case GATT_EVENT_CHARACTERISTIC_QUERY_RESULT: {
-            gatt_client_characteristic_t characteristic;
-            gatt_event_characteristic_query_result_get_characteristic(packet, &characteristic);
-
-            if (characteristic.uuid16 == ORG_BLUETOOTH_CHARACTERISTIC_REPORT) {
-                if (characteristic.properties & (ATT_PROPERTY_NOTIFY | ATT_PROPERTY_READ)) {
-                    input_report_characteristic = characteristic;
-                    found_input_report = true;
-                }
-                if (characteristic.properties & (ATT_PROPERTY_WRITE | ATT_PROPERTY_WRITE_WITHOUT_RESPONSE)) {
-                    output_report_characteristic = characteristic;
-                    found_output_report = true;
-                }
-            }
-            break;
-        }
-
-        case GATT_EVENT_QUERY_COMPLETE: {
-            if (found_input_report) {
-                ble_state = BLE_STATE_SUBSCRIBING_HOGP;
-                // Subscribe to notifications
-                gatt_client_listen_for_characteristic_value_updates(
-                    &notification_listener,
-                    handle_gatt_notification,
-                    connection_handle,
-                    &input_report_characteristic
-                );
-
-                gatt_client_write_client_characteristic_configuration(
-                    NULL,
-                    connection_handle,
-                    &input_report_characteristic,
-                    GATT_CLIENT_CHARACTERISTICS_CONFIGURATION_NOTIFICATION
-                );
-
-                hogp_subscribed = true;
+    switch (hci_event_gattservice_meta_get_subevent_code(packet)) {
+        case GATTSERVICE_SUBEVENT_HID_SERVICE_CONNECTED: {
+            uint8_t status = gattservice_subevent_hid_service_connected_get_status(packet);
+            if (status == ERROR_CODE_SUCCESS) {
                 ble_state = BLE_STATE_CONNECTED_STREAMING;
                 status_led_set_mode(LED_MODE_CONNECTED_READY);
-            }
-            break;
-        }
-        default:
-            break;
-    }
-}
-
-static void gatt_service_discovery_callback(uint8_t packet_type, uint16_t channel, uint8_t *packet, void *arg) {
-    (void) packet_type;
-    (void) channel;
-    (void) arg;
-
-    uint8_t event = hci_event_packet_get_type(packet);
-
-    switch (event) {
-        case GATT_EVENT_SERVICE_QUERY_RESULT: {
-            gatt_client_service_t service;
-            gatt_event_service_query_result_get_service(packet, &service);
-            if (service.uuid16 == ORG_BLUETOOTH_SERVICE_HUMAN_INTERFACE_DEVICE) {
-                hid_service = service;
+            } else {
+                gap_disconnect(connection_handle);
             }
             break;
         }
 
-        case GATT_EVENT_QUERY_COMPLETE: {
-            if (hid_service.start_group_handle != 0) {
-                ble_state = BLE_STATE_DISCOVERING_SERVICES;
-                gatt_client_discover_characteristics_for_service(
-                    gatt_characteristic_discovery_callback,
-                    connection_handle,
-                    &hid_service,
-                    NULL
-                );
+        case GATTSERVICE_SUBEVENT_HID_SERVICE_DISCONNECTED: {
+            hids_cid = 0;
+            ble_state = BLE_STATE_SCANNING;
+            status_led_set_mode(LED_MODE_SCANNING);
+            gap_start_scan();
+            break;
+        }
+
+        case GATTSERVICE_SUBEVENT_HID_REPORT: {
+            const uint8_t *report = gattservice_subevent_hid_report_get_report(packet);
+            uint16_t report_len = gattservice_subevent_hid_report_get_report_len(packet);
+            if (report && report_len >= 9 && state_callback) {
+                gamepad_state_t current_state;
+                if (input_mapper_parse_stadia_report(report, report_len, &current_state)) {
+                    state_callback(&current_state);
+                }
             }
             break;
         }
+
         default:
             break;
     }
@@ -195,33 +125,41 @@ static void gatt_service_discovery_callback(uint8_t packet_type, uint16_t channe
 //--------------------------------------------------------------------+
 
 static void sm_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size) {
-    (void) packet_type;
     (void) channel;
     (void) size;
 
-    uint8_t event = hci_event_packet_get_type(packet);
+    if (packet_type != HCI_EVENT_PACKET) return;
 
-    switch (event) {
+    bool connect_to_service = false;
+
+    switch (hci_event_packet_get_type(packet)) {
         case SM_EVENT_JUST_WORKS_REQUEST:
             sm_just_works_confirm(sm_event_just_works_request_get_handle(packet));
             break;
 
+        case SM_EVENT_NUMERIC_COMPARISON_REQUEST:
+            sm_numeric_comparison_confirm(sm_event_numeric_comparison_request_get_handle(packet));
+            break;
+
         case SM_EVENT_PAIRING_COMPLETE:
             if (sm_event_pairing_complete_get_status(packet) == ERROR_CODE_SUCCESS) {
-                // Request fast connection parameters (7.5ms to 15ms interval)
-                gap_request_connection_parameter_update(connection_handle, 6, 12, 0, 300);
-
-                // Start GATT Service Discovery
-                gatt_client_discover_primary_services_by_uuid16(
-                    gatt_service_discovery_callback,
-                    connection_handle,
-                    ORG_BLUETOOTH_SERVICE_HUMAN_INTERFACE_DEVICE,
-                    NULL
-                );
+                connect_to_service = true;
             }
             break;
+
+        case SM_EVENT_REENCRYPTION_COMPLETE:
+            if (sm_event_reencryption_complete_get_status(packet) == ERROR_CODE_SUCCESS) {
+                connect_to_service = true;
+            }
+            break;
+
         default:
             break;
+    }
+
+    if (connect_to_service && connection_handle != HCI_CON_HANDLE_INVALID) {
+        ble_state = BLE_STATE_DISCOVERING_SERVICES;
+        hids_host_connect(connection_handle, handle_hids_client_event, HID_PROTOCOL_MODE_REPORT, &hids_cid);
     }
 }
 
@@ -263,18 +201,19 @@ static void hci_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *p
             break;
         }
 
-        case HCI_EVENT_LE_META: {
-            uint8_t subevent = hci_event_le_meta_get_subevent_code(packet);
-            if (subevent == HCI_SUBEVENT_LE_CONNECTION_COMPLETE) {
-                uint8_t status = hci_subevent_le_connection_complete_get_status(packet);
+        case HCI_EVENT_META_GAP: {
+            if (hci_event_gap_meta_get_subevent_code(packet) == GAP_SUBEVENT_LE_CONNECTION_COMPLETE) {
+                uint8_t status = gap_subevent_le_connection_complete_get_status(packet);
                 if (status == ERROR_CODE_SUCCESS) {
-                    connection_handle = hci_subevent_le_connection_complete_get_connection_handle(packet);
+                    connection_handle = gap_subevent_le_connection_complete_get_connection_handle(packet);
                     ble_state = BLE_STATE_PAIRING_AUTHENTICATING;
+
+                    // Request fast 7.5ms-15ms interval
+                    gap_request_connection_parameter_update(connection_handle, 6, 12, 0, 300);
 
                     // Trigger SM pairing / encryption
                     sm_request_pairing(connection_handle);
                 } else {
-                    // Re-enter scanning mode
                     ble_state = BLE_STATE_SCANNING;
                     status_led_set_mode(LED_MODE_SCANNING);
                     gap_start_scan();
@@ -283,18 +222,31 @@ static void hci_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *p
             break;
         }
 
+        case HCI_EVENT_LE_META: {
+            uint8_t subevent = hci_event_le_meta_get_subevent_code(packet);
+            if (subevent == HCI_SUBEVENT_LE_CONNECTION_COMPLETE) {
+                uint8_t status = hci_subevent_le_connection_complete_get_status(packet);
+                if (status == ERROR_CODE_SUCCESS && connection_handle == HCI_CON_HANDLE_INVALID) {
+                    connection_handle = hci_subevent_le_connection_complete_get_connection_handle(packet);
+                    ble_state = BLE_STATE_PAIRING_AUTHENTICATING;
+
+                    gap_request_connection_parameter_update(connection_handle, 6, 12, 0, 300);
+                    sm_request_pairing(connection_handle);
+                }
+            }
+            break;
+        }
+
         case HCI_EVENT_DISCONNECTION_COMPLETE: {
             connection_handle = HCI_CON_HANDLE_INVALID;
-            found_input_report = false;
-            found_output_report = false;
-            hogp_subscribed = false;
-            memset(&hid_service, 0, sizeof(hid_service));
+            hids_cid = 0;
 
             ble_state = BLE_STATE_SCANNING;
             status_led_set_mode(LED_MODE_SCANNING);
             gap_start_scan();
             break;
         }
+
         default:
             break;
     }
@@ -307,6 +259,14 @@ static void hci_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *p
 void stadia_ble_init(stadia_state_callback_t callback) {
     state_callback = callback;
     ble_state = BLE_STATE_OFF;
+    connection_handle = HCI_CON_HANDLE_INVALID;
+    hids_cid = 0;
+
+    l2cap_init();
+    gatt_client_init();
+
+    // Initialize HIDS Host service client
+    hids_host_init(hid_descriptor_storage, sizeof(hid_descriptor_storage));
 
     // Register HCI and Security Manager event handlers
     hci_event_callback_registration.callback = &hci_packet_handler;
@@ -337,7 +297,7 @@ bool stadia_ble_is_connected(void) {
 }
 
 bool stadia_ble_send_rumble(uint8_t low_freq, uint8_t high_freq) {
-    if (!stadia_ble_is_connected() || !found_output_report) return false;
+    if (!stadia_ble_is_connected() || hids_cid == 0) return false;
 
     // Stadia Rumble Protocol: Report ID 0x05 (5 bytes)
     // [0x05, low_frequency_low, low_frequency_high, high_frequency_low, high_frequency_high]
@@ -348,13 +308,7 @@ bool stadia_ble_send_rumble(uint8_t low_freq, uint8_t high_freq) {
     rumble_packet[3] = high_freq;
     rumble_packet[4] = (high_freq > 0) ? 0x80 : 0x00;
 
-    gatt_client_write_value_of_characteristic_without_response(
-        connection_handle,
-        output_report_characteristic.value_handle,
-        sizeof(rumble_packet),
-        rumble_packet
-    );
-
+    hids_host_send_write_report(hids_cid, STADIA_OUTPUT_REPORT_ID, HID_REPORT_TYPE_OUTPUT, rumble_packet, sizeof(rumble_packet));
     return true;
 }
 
@@ -362,7 +316,12 @@ void stadia_ble_clear_bonding_and_rescan(void) {
     if (connection_handle != HCI_CON_HANDLE_INVALID) {
         gap_disconnect(connection_handle);
     }
-    gap_delete_all_pairings();
+    int count = le_device_db_count();
+    for (int i = 0; i < count; i++) {
+        le_device_db_remove(0);
+    }
+    connection_handle = HCI_CON_HANDLE_INVALID;
+    hids_cid = 0;
     ble_state = BLE_STATE_SCANNING;
     status_led_set_mode(LED_MODE_PAIRING_RESET);
     gap_start_scan();

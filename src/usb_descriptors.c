@@ -213,9 +213,10 @@ static const uint8_t desc_hid_report_switch[] = {
 //--------------------------------------------------------------------+
 
 // 1. Xbox 360 / XInput Configuration Descriptor (Vendor Specific Class 0xFF)
+// Total Length = 9 (Config) + 9 (Interface) + 17 (Xbox Header) + 7 (EP IN) + 7 (EP OUT) = 49 bytes (0x31)
 static const uint8_t desc_configuration_xinput[] = {
     // Config Header (9 bytes)
-    0x09, TUSB_DESC_CONFIGURATION, 0x30, 0x00, 0x01, 0x01, 0x00, 0x80, 0xFA, // 500mA
+    0x09, TUSB_DESC_CONFIGURATION, 0x31, 0x00, 0x01, 0x01, 0x00, 0x80, 0xFA, // 500mA
     // Interface 0 (9 bytes)
     0x09, TUSB_DESC_INTERFACE, 0x00, 0x00, 0x02, 0xFF, 0x5D, 0x01, 0x00,
     // Unknown Xbox descriptor header (17 bytes)
@@ -226,14 +227,28 @@ static const uint8_t desc_configuration_xinput[] = {
     0x07, TUSB_DESC_ENDPOINT, EPNUM_XINPUT_OUT, 0x03, 0x20, 0x00, 0x08  // Interrupt OUT, 32 bytes, 8ms
 };
 
-// 2. Generic HID Configuration Descriptor (DS4, Switch, DualSense, PS3)
-static const uint8_t desc_configuration_hid[] = {
+// 2. Sony PlayStation 4 DualShock 4 & DualSense Configuration Descriptor
+static const uint8_t desc_configuration_ds4[] = {
     // Config Header (9 bytes)
     0x09, TUSB_DESC_CONFIGURATION, 0x29, 0x00, 0x01, 0x01, 0x00, 0x80, 0xFA, // 500mA
     // Interface 0: HID (9 bytes)
     0x09, TUSB_DESC_INTERFACE, 0x00, 0x00, 0x02, 0x03, 0x00, 0x00, 0x00,
     // HID Descriptor (9 bytes)
     0x09, 0x21, 0x11, 0x01, 0x00, 0x01, 0x22, sizeof(desc_hid_report_ds4) & 0xFF, (sizeof(desc_hid_report_ds4) >> 8) & 0xFF,
+    // Endpoint IN 1 (7 bytes)
+    0x07, TUSB_DESC_ENDPOINT, EPNUM_HID_IN, 0x03, 0x40, 0x00, 0x01, // 64 bytes, 1ms
+    // Endpoint OUT 1 (7 bytes)
+    0x07, TUSB_DESC_ENDPOINT, EPNUM_HID_OUT, 0x03, 0x40, 0x00, 0x01  // 64 bytes, 1ms
+};
+
+// 3. Nintendo Switch Pro Controller Configuration Descriptor
+static const uint8_t desc_configuration_switch[] = {
+    // Config Header (9 bytes)
+    0x09, TUSB_DESC_CONFIGURATION, 0x29, 0x00, 0x01, 0x01, 0x00, 0x80, 0xFA, // 500mA
+    // Interface 0: HID (9 bytes)
+    0x09, TUSB_DESC_INTERFACE, 0x00, 0x00, 0x02, 0x03, 0x00, 0x00, 0x00,
+    // HID Descriptor (9 bytes)
+    0x09, 0x21, 0x11, 0x01, 0x00, 0x01, 0x22, sizeof(desc_hid_report_switch) & 0xFF, (sizeof(desc_hid_report_switch) >> 8) & 0xFF,
     // Endpoint IN 1 (7 bytes)
     0x07, TUSB_DESC_ENDPOINT, EPNUM_HID_IN, 0x03, 0x40, 0x00, 0x01, // 64 bytes, 1ms
     // Endpoint OUT 1 (7 bytes)
@@ -295,10 +310,16 @@ uint8_t const * tud_descriptor_device_cb(void) {
 // Invoked when received GET CONFIGURATION DESCRIPTOR
 uint8_t const * tud_descriptor_configuration_cb(uint8_t index) {
     (void) index;
-    if (current_profile == PROFILE_XINPUT_XBOX360) {
-        return desc_configuration_xinput;
-    } else {
-        return desc_configuration_hid;
+    switch (current_profile) {
+        case PROFILE_XINPUT_XBOX360:
+            return desc_configuration_xinput;
+        case PROFILE_SWITCH_PRO:
+            return desc_configuration_switch;
+        case PROFILE_PS4_DUALSHOCK4:
+        case PROFILE_PS5_DUALSENSE:
+        case PROFILE_PS3_DINPUT:
+        default:
+            return desc_configuration_ds4;
     }
 }
 

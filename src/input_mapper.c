@@ -86,15 +86,25 @@ uint8_t input_mapper_dpad_to_hat(uint8_t dpad_mask) {
 }
 
 bool input_mapper_parse_stadia_report(const uint8_t *data, uint16_t len, gamepad_state_t *out_state) {
-    if (!data || !out_state || len < 10) return false;
-    if (data[0] != 0x03) return false; // Verify Report ID 3
+    if (!data || !out_state || len < 9) return false;
+
+    const uint8_t *report_bytes = data;
+    uint16_t report_len = len;
+
+    // Check if Report ID 0x03 is present as prefix (e.g. 10 or 11 byte report where data[1] is hat 0..8)
+    if (data[0] == 0x03 && len >= 10 && data[1] <= 8) {
+        report_bytes = &data[1];
+        report_len = len - 1;
+    }
+
+    if (report_len < 9) return false;
 
     out_state->connected = true;
     out_state->buttons = 0;
-    out_state->dpad = input_mapper_hat_to_dpad(data[1]);
+    out_state->dpad = input_mapper_hat_to_dpad(report_bytes[0]);
 
-    // Parse Byte 2 (System, Sticks, System Buttons)
-    uint8_t b2 = data[2];
+    // Parse Byte 1 (System, Sticks, System Buttons)
+    uint8_t b2 = report_bytes[1];
     if (b2 & 0x01) out_state->buttons |= BTN_MASK_CAPTURE_MUTE;
     if (b2 & 0x02) out_state->buttons |= BTN_MASK_TOUCHPAD_ASSIST;
     if (b2 & 0x10) out_state->buttons |= BTN_MASK_HOME_GUIDE;
@@ -102,8 +112,8 @@ bool input_mapper_parse_stadia_report(const uint8_t *data, uint16_t len, gamepad
     if (b2 & 0x40) out_state->buttons |= BTN_MASK_SELECT_SHARE;
     if (b2 & 0x80) out_state->buttons |= BTN_MASK_R3;
 
-    // Parse Byte 3 (Face buttons, Bumpers, L3)
-    uint8_t b3 = data[3];
+    // Parse Byte 2 (Face buttons, Bumpers, L3)
+    uint8_t b3 = report_bytes[2];
     if (b3 & 0x01) out_state->buttons |= BTN_MASK_L3;
     if (b3 & 0x02) out_state->buttons |= BTN_MASK_R1;
     if (b3 & 0x04) out_state->buttons |= BTN_MASK_L1;
@@ -113,21 +123,21 @@ bool input_mapper_parse_stadia_report(const uint8_t *data, uint16_t len, gamepad
     if (b3 & 0x40) out_state->buttons |= BTN_MASK_CROSS_A;
 
     // Parse Analog Sticks (scaled to -32768..32767)
-    out_state->stick_lx = scale_axis(data[4], false);
-    out_state->stick_ly = scale_axis(data[5], true);  // Inverted so Up is positive for standard 3D math
-    out_state->stick_rx = scale_axis(data[6], false);
-    out_state->stick_ry = scale_axis(data[7], true);
+    out_state->stick_lx = scale_axis(report_bytes[3], false);
+    out_state->stick_ly = scale_axis(report_bytes[4], true);  // Inverted so Up is positive for standard 3D math
+    out_state->stick_rx = scale_axis(report_bytes[5], false);
+    out_state->stick_ry = scale_axis(report_bytes[6], true);
 
     // Parse Analog Triggers (0..255)
-    out_state->trigger_l = data[8];
-    out_state->trigger_r = data[9];
+    out_state->trigger_l = report_bytes[7];
+    out_state->trigger_r = report_bytes[8];
 
     // Digital threshold for trigger clicks
     if (out_state->trigger_l > 40) out_state->buttons |= BTN_MASK_L2_DIGITAL;
     if (out_state->trigger_r > 40) out_state->buttons |= BTN_MASK_R2_DIGITAL;
 
-    if (len >= 11) {
-        out_state->battery_level = data[10];
+    if (report_len >= 10) {
+        out_state->battery_level = report_bytes[9];
     } else {
         out_state->battery_level = 100;
     }

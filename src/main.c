@@ -2,6 +2,7 @@
 #include <string.h>
 #include "pico/stdlib.h"
 #include "pico/cyw43_arch.h"
+#include "hardware/watchdog.h"
 #include "bsp/board.h"
 #include "config.h"
 #include "status_led.h"
@@ -12,6 +13,8 @@
 // Latest received state
 static gamepad_state_t latest_gamepad_state;
 static uint32_t reset_button_hold_start = 0;
+static uint32_t profile_switch_hold_start = 0;
+static controller_profile_t pending_switch_profile = PROFILE_XINPUT_XBOX360;
 
 // Callback from BLE client when a new packet arrives from Stadia controller
 static void on_stadia_state_received(const gamepad_state_t *state) {
@@ -21,7 +24,7 @@ static void on_stadia_state_received(const gamepad_state_t *state) {
     // Forward to USB host (Brook Wingman P5 / PS5 / PC)
     usb_gamepad_send_state(&latest_gamepad_state);
 
-    // Check for pairing reset combo: Assistant (●) + Capture ([ ]) held for 3 seconds
+    // 1. Check for pairing reset combo: Assistant (●) + Capture ([ ]) held for 3 seconds
     if ((state->buttons & BTN_MASK_TOUCHPAD_ASSIST) && (state->buttons & BTN_MASK_CAPTURE_MUTE)) {
         if (reset_button_hold_start == 0) {
             reset_button_hold_start = to_ms_since_boot(get_absolute_time());
@@ -32,6 +35,34 @@ static void on_stadia_state_received(const gamepad_state_t *state) {
         }
     } else {
         reset_button_hold_start = 0;
+    }
+
+    // 2. Check for Profile Switching combos (held for 2 seconds):
+    // Assistant (●) + A -> Profile 0 (Xbox 360 / XInput)
+    // Assistant (●) + X -> Profile 1 (PS4 DualShock 4)
+    // Assistant (●) + B -> Profile 2 (Nintendo Switch Pro)
+    // Assistant (●) + Y -> Profile 3 (PS5 DualSense)
+    if ((state->buttons & BTN_MASK_TOUCHPAD_ASSIST) && !(state->buttons & BTN_MASK_CAPTURE_MUTE)) {
+        controller_profile_t target = PROFILE_COUNT;
+        if (state->buttons & BTN_MASK_CROSS_A) target = PROFILE_XINPUT_XBOX360;
+        else if (state->buttons & BTN_MASK_SQUARE_X) target = PROFILE_PS4_DUALSHOCK4;
+        else if (state->buttons & BTN_MASK_CIRCLE_B) target = PROFILE_SWITCH_PRO;
+        else if (state->buttons & BTN_MASK_TRIANGLE_Y) target = PROFILE_PS5_DUALSENSE;
+
+        if (target != PROFILE_COUNT) {
+            if (profile_switch_hold_start == 0 || pending_switch_profile != target) {
+                profile_switch_hold_start = to_ms_since_boot(get_absolute_time());
+                pending_switch_profile = target;
+            } else if (to_ms_since_boot(get_absolute_time()) - profile_switch_hold_start > 2000) {
+                // Save new profile to flash and reboot so USB re-enumerates
+                input_mapper_save_profile(target);
+                watchdog_reboot(0, 0, 0);
+            }
+        } else {
+            profile_switch_hold_start = 0;
+        }
+    } else {
+        profile_switch_hold_start = 0;
     }
 }
 

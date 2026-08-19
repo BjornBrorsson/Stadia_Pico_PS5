@@ -1,0 +1,54 @@
+name: Bug Report
+description: Create a report to help us fix an issue with Stadia_Pico_PS5
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue!
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the Bug
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+  - type: dropdown
+    id: host_target
+    attributes:
+      label: Target Host / Hardware Setup
+      options:
+        - "PS5 with Brook Wingman P5"
+        - "PS5 Direct USB"
+        - "PC (Windows / Linux / macOS)"
+        - "Nintendo Switch"
+        - "Other"
+    validations:
+      required: true
+  - type: textarea
+    id: led_status
+    attributes:
+      label: LED Indicators Status
+      description: |
+        - Pico WH LED: (e.g. Solid Green, Fast Blink, Slow Blink, Off)
+        - Stadia Controller LED: (e.g. Solid White, Blinking Orange, Off)
+        - Wingman Adapter LED (if used): (e.g. Solid Blue, Blinking Blue, Solid Purple)
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Step-by-step instructions on how to trigger the issue.
+      placeholder: |
+        1. Turn on Stadia controller with Stadia + Y
+        2. Plug Pico WH into Brook Wingman P5 on PS5
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional Context
+      description: Add any other context, logs, or screenshots here.

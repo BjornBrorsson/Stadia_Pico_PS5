@@ -4,7 +4,7 @@ bin/
 out/
 cmake-build-*/
 
-# Pico / UF2 artifacts (keep binaries out of git)
+# Pico / UF2 artifacts (keep compiled binaries out of git)
 *.uf2
 *.elf
 *.hex
@@ -12,10 +12,17 @@ cmake-build-*/
 *.map
 *.dis
 
-# Pico SDK generated
+# Pico SDK generated / dependencies
 generated/
 pico-sdk/
 _deps/
+.pico-sdk/
+
+# Vendor updater binaries & tools
+Wingman P5 offline*/
+*.exe
+*.dll
+*.zip
 
 # IDE & Editor files
 .vscode/

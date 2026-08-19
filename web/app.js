@@ -310,20 +310,18 @@ function updateGamepadState() {
   const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
   let gp = null;
 
-  if (activeGamepadIndex !== null && gamepads[activeGamepadIndex]) {
-    gp = gamepads[activeGamepadIndex];
-  } else {
-    for (let i = 0; i < gamepads.length; i++) {
-      if (gamepads[i]) {
-        gp = gamepads[i];
-        activeGamepadIndex = i;
-        updateConnectionStatus(gp);
-        break;
-      }
+  for (let i = 0; i < gamepads.length; i++) {
+    if (gamepads[i]) {
+      gp = gamepads[i];
+      activeGamepadIndex = i;
+      break;
     }
   }
 
   if (gp) {
+    if (!statusDot.classList.contains('connected')) {
+      updateConnectionStatus(gp);
+    }
     // Benchmark calculations
     frameCount++;
     const now = performance.now();

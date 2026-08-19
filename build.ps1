@@ -35,10 +35,14 @@ if (-not (Test-Path "build")) {
 }
 
 Write-Host "Configuring CMake project..." -ForegroundColor Cyan
-cmake -B build -DCMAKE_BUILD_TYPE=$BuildType -DPICO_BOARD=pico_w
+cmake -B build -G Ninja "-DCMAKE_BUILD_TYPE=$BuildType" -DPICO_BOARD=pico_w
 
 Write-Host "Building firmware..." -ForegroundColor Cyan
 cmake --build build --config $BuildType -j
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Build failed with exit code $LASTEXITCODE"
+    exit $LASTEXITCODE
+}
 
 if (Test-Path "build\stadia_ps5_bridge.uf2") {
     Write-Host "`nBuild SUCCESSFUL!" -ForegroundColor Green

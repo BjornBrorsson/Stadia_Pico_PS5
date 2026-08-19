@@ -32,7 +32,7 @@ typedef enum {
 #define BTN_MASK_L3             (1u << 10) // Left Stick Click
 #define BTN_MASK_R3             (1u << 11) // Right Stick Click
 #define BTN_MASK_HOME_GUIDE     (1u << 12) // Stadia button / PS Home / Xbox Guide
-#define BTN_MASK_TOUCHPAD_ASSIST(1u << 13) // Assistant button (●) / Touchpad Click
+#define BTN_MASK_TOUCHPAD_ASSIST  (1u << 13) // Assistant button (●) / Touchpad Click
 #define BTN_MASK_CAPTURE_MUTE   (1u << 14) // Capture button ([ ]) / Mic Mute
 
 // D-Pad Directional Bitmask
@@ -67,8 +67,8 @@ typedef struct {
     uint8_t  high_frequency_rumble; // Small motor (0-255)
 } rumble_state_t;
 
-// Flash Memory Persistence Config
-#define FLASH_CONFIG_OFFSET (1024 * 1024) // 1MB offset into Flash
+// Flash Memory Persistence Config (1.5MB offset into Flash, safely outside firmware)
+#define FLASH_CONFIG_OFFSET (1024 * 1024 + 512 * 1024)
 #define FLASH_CONFIG_MAGIC  0x53544431    // 'STD1'
 
 typedef struct {
